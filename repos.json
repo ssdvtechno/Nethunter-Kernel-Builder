@@ -1,38 +1,30 @@
-[  {
-    "kernelSource": {
-      "name": "MikasaNethunter",
-      "repo": "https://github.com/noophyy/mikasa_kernel_realme2_c1.git",
-      "branch": "Light",
-      "device": "mikasa"
-    },
-    "withKernelSU": false,
-    "toolchains": [
-      {
-        "repo": "https://android.googlesource.com/platform/prebuilts/gas/linux-x86",
-        "branch": "master",
-        "name": "gas"
-      },
-      {
-        "repo": "https://github.com/kdrag0n/proton-clang.git",
-        "branch": "master",
-        "name": "clang"
-      }
-    ],
-    "params": {
-      "ARCH": "arm64",
-      "CROSS_COMPILE": "aarch64-linux-gnu-",
-      "CROSS_COMPILE_ARM32": "arm-linux-gnueabi-",
-      "CROSS_COMPILE_COMPAT": "arm-linux-gnueabi-",
-      "CLANG_TRIPLE": "aarch64-linux-gnu-",
-      "AR": "llvm-ar",
-      "OBJDUMP": "llvm-objdump",
-      "STRIP": "llvm-strip",
-      "OBJCOPY": "llvm-objcopy",
-      "NM": "llvm-nm",
-      "CC": "clang"
-    },
-    "extraParams": {
-      "KEEP": ""
-    }
+[
+{
+  "kernelSource": {
+    "name": "a32x-nethunter-ksu-susfs",
+    "repo": "https://github.com/revx0012/android_kernel_samsung_a32_5g.git",
+    "branch": "ksu-susfs",
+    "device": "a32x"
+  },
+  "withKernelSU": false,
+  "toolchains": [],
+  "params": {
+    "ARCH": "arm64",
+    "CROSS_COMPILE": "aarch64-linux-android-",
+    "CROSS_COMPILE_ARM32": "",
+    "CLANG_TRIPLE": "aarch64-linux-gnu-",
+    "AR": "llvm-ar",
+    "CC": "clang"
+  },
+  "extraParams": {
+    "CONFIG_SECTION_MISMATCH_WARN_ONLY": "y",
+    "NM": "llvm-nm",
+    "LOCALVERSION": "",
+    "OBJDUMP": "llvm-objdump",
+    "OBJCOPY": "llvm-objcopy",
+    "STRIP": "llvm-strip",
+    "LD": "ld.lld",
+    "KCFLAGS": "-w"
   }
+}
 ]
