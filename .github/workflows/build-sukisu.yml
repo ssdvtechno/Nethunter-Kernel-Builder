@@ -99,6 +99,42 @@ jobs:
           source = source.replace(marker, legacy_stub + marker, 1)
           source += "\n#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0) */\n"
           path.write_text(source)
+
+          path = Path("KernelSU/kernel/supercall/dispatch.c")
+          source = path.read_text()
+          marker = "#endif\n\nstatic int do_nuke_ext4_sysfs"
+          fallback = '''#else
+          int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg)
+          {
+              (void)cmd;
+              if (magic1 != KSU_INSTALL_MAGIC1)
+                  return -EINVAL;
+              if (magic2 == KSU_INSTALL_MAGIC2)
+                  return ksu_supercall_reboot_handler(arg);
+              return -EINVAL;
+          }
+          #endif
+
+          static int do_nuke_ext4_sysfs'''
+          if source.count(marker) != 1:
+              raise SystemExit("Unexpected SukiSU dispatch.c SUSFS guard")
+          source = source.replace(marker, fallback, 1)
+          path.write_text(source)
+
+          path = Path("KernelSU/kernel/extension/kpm/kpm.c")
+          source = path.read_text()
+          marker = "    if (!access_ok(u64_to_user_ptr(cmd.result_code), sizeof(result))) return -EFAULT;"
+          compat = '''#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)
+              if (!access_ok(VERIFY_WRITE, u64_to_user_ptr(cmd.result_code), sizeof(result))) return -EFAULT;
+          #else
+          ''' + marker + '''
+          #endif'''
+          if source.count(marker) != 1:
+              raise SystemExit("Unexpected SukiSU KPM access_ok call")
+          source = source.replace(marker, compat, 1)
+          if "#include <linux/version.h>" not in source:
+              source = source.replace("#include <linux/errno.h>\n", "#include <linux/errno.h>\n#include <linux/version.h>\n", 1)
+          path.write_text(source)
           PY
           grep -q 'return -EOPNOTSUPP;' KernelSU/kernel/extension/cpu_spoof.c
           grep -q '^config KSU_SUSFS$' KernelSU/kernel/Kconfig
@@ -222,6 +258,7 @@ jobs:
           echo "PATH Variable: $PATH"
           make ${{ env.args }} ${{ env.DEFCONFIG_NAME }}
           grep -q '^CONFIG_KSU=y$' "../${{ env.OUT_DIR }}/.config"
+          grep -q '^# CONFIG_KSU_SUSFS is not set$' "../${{ env.OUT_DIR }}/.config"
 
       - name: "🏴‍☠️ Before Action "
         env:
