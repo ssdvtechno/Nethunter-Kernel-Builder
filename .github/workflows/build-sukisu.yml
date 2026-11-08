@@ -1,0 +1,277 @@
+name: "Build SukiSU-Ultra kernel"
+
+env:
+  CONFIGURATION: "repos_sukisu.json"
+  OUT_DIR: "out"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  Set-repos:
+    name: "🐂 Parse repos.json"
+    runs-on: ubuntu-24.04
+    outputs:
+      repos: ${{ steps.generate-matrix.outputs.repos }}
+    steps:
+      - name: "😄 Checkout"
+        uses: actions/checkout@v7
+
+      - name: "😆 Generate Matrix"
+        id: generate-matrix
+        run: |
+          echo "repos<<EOF" >> $GITHUB_OUTPUT
+          cat  ${{ env.CONFIGURATION }} >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+  Build-Kernel:
+    name: "🐎 Build kernel"
+    runs-on: ubuntu-24.04
+    needs:
+      - Set-repos
+    strategy:
+      max-parallel: 2
+      fail-fast: false
+      matrix:
+        repos: ${{ fromJSON(needs.Set-repos.outputs.repos) }}
+    env:
+      kernelDir: ${{ matrix.repos.kernelSource.name }}_${{ matrix.repos.kernelSource.device }}
+
+      kernelName: ${{ matrix.repos.kernelSource.name }}
+      kernelRepo: ${{ matrix.repos.kernelSource.repo }}
+      kernelBranch: ${{ matrix.repos.kernelSource.branch }}
+      kernelDevice: ${{ matrix.repos.kernelSource.device }}
+
+      DEFCONFIG_NAME: ${{ matrix.repos.kernelSource.device }}_defconfig
+
+      withKernelSU: ${{ matrix.repos.withKernelSU }}
+    steps:
+      - name: "📥 Checkout builder config"
+        uses: actions/checkout@v7
+
+      - name: "✨ Create working dir"
+        run: mkdir -p $kernelDir
+
+      - name: "⭐ Install prerequisites"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc curl git zip ftp gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev lftp zstd wget libfl-dev python3 libarchive-tools
+
+      - name: "🌟 Clone kernel source => (${{ env.kernelRepo }})"
+        working-directory: ./${{ env.kernelDir }}
+        run: |
+          git clone --recursive --branch $kernelBranch $kernelRepo $kernelName --depth=1
+
+      - name: "🧩 Install SukiSU-Ultra builtin"
+        if: ${{ matrix.repos.kernelSource.device == 'a32x' }}
+        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
+        run: |
+          rm -rf KernelSU drivers/kernelsu
+          sed -i '\|kernelsu|d' drivers/Makefile
+          sed -i '\|drivers/kernelsu/Kconfig|d' drivers/Kconfig
+          curl -fLSs --retry 3 "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/1cfa57340590971cba7521ed536da8ebbedc5f0a/kernel/setup.sh" | bash -s 1cfa57340590971cba7521ed536da8ebbedc5f0a
+          test "$(git -C KernelSU rev-parse HEAD)" = "1cfa57340590971cba7521ed536da8ebbedc5f0a"
+          grep -q '^config KSU_SUSFS$' KernelSU/kernel/Kconfig
+          grep -q 'const char __user \*\*filename_user' KernelSU/kernel/feature/sucompat.h
+          grep -q 'ksu_handle_execveat' fs/exec.c
+          grep -q 'ksu_handle_faccessat' fs/open.c
+          grep -q 'ksu_handle_stat' fs/stat.c
+          grep -q 'ksu_handle_sys_reboot' kernel/reboot.c
+
+      - name: "💫 Get toolchains"
+        working-directory: ./${{ env.kernelDir }}
+        env:
+          toolchains: "${{ toJSON(matrix.repos.toolchains) }}"
+        run: |
+          if [ "$kernelDevice" = "a32x" ]; then
+            mkdir -p clang gcc
+            curl -fL --retry 3 'https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android11-release/clang-r383902.tar.gz' | tar -xz -C clang
+            curl -fL --retry 3 'https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android11-release.tar.gz' | tar -xz -C gcc
+            echo "$(pwd)/clang/bin" >> $GITHUB_PATH
+            echo "$(pwd)/gcc/bin" >> $GITHUB_PATH
+            exit 0
+          fi
+          toolchains_num="$(echo $toolchains | jq 'length')"
+          echo $toolchains_num
+          for ((i=0;i<toolchains_num;i++)); do
+            name=$(echo $toolchains | jq -r ".[$i].name")
+            repo=$(echo $toolchains | jq -r ".[$i].repo")
+            branch=$(echo $toolchains | jq -r ".[$i].branch")
+            git clone --recursive --branch $branch $repo $name --depth=1
+            echo "$(pwd)/$name/" >> $GITHUB_PATH
+            echo "$(pwd)/$name/bin" >> $GITHUB_PATH
+          done
+
+          echo "PATH Variable: $PATH"
+
+      - name: "😎 Set args"
+        id: generate-args
+        working-directory: ./${{ env.kernelDir }}
+        env:
+          params: "${{ toJSON(matrix.repos.params) }}"
+          extraParams: "${{ toJSON(matrix.repos.extraParams) }}"
+          THREAD: $(nproc --all)
+        run: |
+          echo "PATH Variable: $PATH"
+          ARCH=$(echo $params | jq -r ".ARCH")
+          CROSS_COMPILE=$(echo $params | jq -r ".CROSS_COMPILE")
+          CROSS_COMPILE_COMPAT=$(echo $params | jq -r ".CROSS_COMPILE_COMPAT // .CROSS_COMPILE_ARM32 // empty")
+          CROSS_COMPILE_ARM32=$(echo $params | jq -r ".CROSS_COMPILE_ARM32")
+          CLANG_TRIPLE=$(echo $params | jq -r ".CLANG_TRIPLE")
+          AR=$(echo $params | jq -r ".AR")
+          CC=$(echo $params | jq -r ".CC")
+
+          echo "ARCH=$ARCH" >> $GITHUB_ENV
+          echo "ANDROID_MAJOR_VERSION=t" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_USER=nethunter" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=github-actions" >> $GITHUB_ENV
+
+          args="-j$(nproc --all)"
+          if [ -n "${{ env.OUT_DIR }}" ]; then
+            mkdir -p $(pwd)/${{ env.OUT_DIR }}
+            args="$args O=$(pwd)/${{ env.OUT_DIR }}"
+          fi
+          if [ -n "$ARCH" ]; then
+            args="$args ARCH=$ARCH"
+          fi
+          if [ -n "$CROSS_COMPILE" ]; then
+            args="$args CROSS_COMPILE=$CROSS_COMPILE"
+          fi
+          if [ -n "$CLANG_TRIPLE" ]; then
+            args="$args CLANG_TRIPLE=$CLANG_TRIPLE"
+          fi
+          if [ -n "$CROSS_COMPILE_COMPAT" ]; then
+            args="$args CROSS_COMPILE_ARM32=$CROSS_COMPILE_COMPAT"
+          fi
+          if [ -n "$AR" ]; then
+            args="$args AR=$AR"
+          fi
+          if [ -n "$CC" ]; then
+            args="$args CC=$CC"
+          fi
+          args="$args LOCALVERSION="
+          echo "args=$args" >> $GITHUB_OUTPUT
+          echo "extraParams_toJson: $extraParams"
+          extra_params=$(echo $extraParams | jq -r ' to_entries[] | select(.value != "") | "\(.key)=\(.value)"' | tr "\n" " " | sed 's/ $//')
+          echo "args=$args $extra_params" >> $GITHUB_OUTPUT
+
+      - name: "😋 Update KernelSU"
+        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
+        if: ${{ env.withKernelSU == 'true' }}
+        run: |
+          if [ -d "./KernelSU" ]; then
+            rm -rf "./KernelSU"
+          fi
+          if [ -d "./drivers/kernelsu" ]; then
+            rm -rf "./drivers/kernelsu"
+          fi
+
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+
+          echo -e "\nCONFIG_KPROBES=y" >> ./arch/${{ env.ARCH }}/configs/${{ env.DEFCONFIG_NAME }}
+          echo -e "\nCONFIG_HAVE_KPROBES=y" >> ./arch/${{ env.ARCH }}/configs/${{ env.DEFCONFIG_NAME }}
+          echo -e "\nCONFIG_KPROBE_EVENTS=y" >> ./arch/${{ env.ARCH }}/configs/${{ env.DEFCONFIG_NAME }}
+
+          cat ./arch/${{ env.ARCH }}/configs/${{ env.DEFCONFIG_NAME }}
+
+      - name: "🛠️ Apply NetHunter config fragment"
+        if: ${{ matrix.repos.kernelSource.device == 'a32x' }}
+        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
+        run: |
+          git apply --check "$GITHUB_WORKSPACE/patches/a32x-wifi-injection.patch"
+          git apply "$GITHUB_WORKSPACE/patches/a32x-wifi-injection.patch"
+          sed -i '/^CONFIG_KSU_MANUAL_HOOK=/d' "./arch/${{ env.ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
+          cat "$GITHUB_WORKSPACE/patches/a32x-nethunter.config" >> "./arch/${{ env.ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
+          cat "$GITHUB_WORKSPACE/patches/a32x-sukisu.config" >> "./arch/${{ env.ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
+
+      - name: "👍 Make defconfig"
+        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
+        env:
+          args: ${{ steps.generate-args.outputs.args }}
+        run: |
+          echo "PATH Variable: $PATH"
+          make ${{ env.args }} ${{ env.DEFCONFIG_NAME }}
+          grep -q '^CONFIG_KSU=y$' "${{ env.OUT_DIR }}/.config"
+
+      - name: "🏴‍☠️ Before Action "
+        env:
+            args: ${{ steps.generate-args.outputs.args }}
+        working-directory: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}
+        run: |
+          echo "args ---> ${args}"
+          echo "current path ---> $(pwd)"
+          echo "CONFIG_OF_CONFIGFS=y" >> .config
+          echo "CONFIG_OF_OVERLAY=y" >> .config
+          cat .config
+
+      - name: "🎶 Build kernel"
+        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
+        env:
+          args: ${{ steps.generate-args.outputs.args }}
+        run: |
+          echo "PATH Variable: $PATH"
+          make ${args} Image
+
+      - name: "📦 Package AnyKernel3 zip"
+        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
+        run: |
+          release="4.14.186-27095505"
+          test -s "../${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image"
+          if [ "$release" != "4.14.186-27095505" ]; then
+            echo "Unexpected kernel release: $release" >&2
+            exit 1
+          fi
+          install -m 0644 "../${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image" anykernel3/Image
+          sed -i 's/^do.devicecheck=0$/do.devicecheck=1/' anykernel3/anykernel.sh
+          sed -i 's/^device.name1=$/device.name1=a32x/' anykernel3/anykernel.sh
+          sed -i 's/^device.name2=$/device.name2=a32xeea/' anykernel3/anykernel.sh
+          mkdir -p "$GITHUB_WORKSPACE/${{ env.OUT_DIR }}"
+          zip_name="NetHunter-SukiSU-Ultra-SM-A326B-${release}.zip"
+          (cd anykernel3 && zip -q -r -9 "$GITHUB_WORKSPACE/${{ env.OUT_DIR }}/$zip_name" . -x '.github/*' '.git/*')
+
+      - name: "🏴‍☠️ Post Action "
+        run: |
+          # make ${args} dtbs
+          # make ${args} dtboimage
+          pwd
+          find ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/ -type f
+
+      - name: "💛 Upload Image"
+        uses: actions/upload-artifact@v7
+        with:
+          name: Image(${{ env.kernelDevice }}-${{ env.kernelName }}-${{ env.kernelBranch }})
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: "💙 Upload Image.gz"
+        uses: actions/upload-artifact@v7
+        with:
+          name: Image.gz(${{ env.kernelDevice }}-${{ env.kernelName }}-${{ env.kernelBranch }})
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: "💜 Upload dtb"
+        uses: actions/upload-artifact@v7
+        with:
+          name: dtb(${{ env.kernelDevice }}-${{ env.kernelName }}-${{ env.kernelBranch }})
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtb
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: "❤️ Upload dtbo.img"
+        uses: actions/upload-artifact@v7
+        with:
+          name: dtbo.img(${{ env.kernelDevice }}-${{ env.kernelName }}-${{ env.kernelBranch }})
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: "🧪 Upload NetHunter AnyKernel3 zip"
+        uses: actions/upload-artifact@v7
+        with:
+          name: NetHunter-SukiSU-Ultra-SM-A326B
+          path: ./${{ env.OUT_DIR }}/NetHunter-SukiSU-Ultra-SM-A326B-4.14.186-27095505.zip
+          if-no-files-found: error
+          retention-days: 7

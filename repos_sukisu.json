@@ -1,0 +1,30 @@
+[
+{
+  "kernelSource": {
+    "name": "a32x-nethunter-sukisu",
+    "repo": "https://github.com/revx0012/android_kernel_samsung_a32_5g.git",
+    "branch": "ksu-susfs",
+    "device": "a32x"
+  },
+  "withKernelSU": false,
+  "toolchains": [],
+  "params": {
+    "ARCH": "arm64",
+    "CROSS_COMPILE": "aarch64-linux-android-",
+    "CROSS_COMPILE_ARM32": "",
+    "CLANG_TRIPLE": "aarch64-linux-gnu-",
+    "AR": "llvm-ar",
+    "CC": "clang"
+  },
+  "extraParams": {
+    "CONFIG_SECTION_MISMATCH_WARN_ONLY": "y",
+    "NM": "llvm-nm",
+    "LOCALVERSION": "",
+    "OBJDUMP": "llvm-objdump",
+    "OBJCOPY": "llvm-objcopy",
+    "STRIP": "llvm-strip",
+    "LD": "ld.lld",
+    "KCFLAGS": "-w"
+  }
+}
+]
