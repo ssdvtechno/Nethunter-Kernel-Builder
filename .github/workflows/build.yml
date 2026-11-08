@@ -62,6 +62,14 @@ jobs:
         run: |
           git clone --recursive --branch $kernelBranch $kernelRepo $kernelName --depth=1
 
+      - name: "🧩 Restore KernelSU-Next manager sources"
+        if: ${{ matrix.repos.kernelSource.device == 'a32x' }}
+        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
+        run: |
+          git clone --depth 1 --branch v3.2.0-legacy https://github.com/KernelSU-Next/KernelSU-Next.git "$RUNNER_TEMP/ksu-next-legacy"
+          mkdir -p KernelSU-Next/kernel
+          cp -a "$RUNNER_TEMP/ksu-next-legacy/kernel/manager" KernelSU-Next/kernel/
+
       - name: "💫 Get toolchains"
         working-directory: ./${{ env.kernelDir }}
         env:
