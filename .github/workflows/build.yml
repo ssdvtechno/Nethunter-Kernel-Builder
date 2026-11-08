@@ -49,6 +49,9 @@ jobs:
       - name: "✨ Create working dir"
         run: mkdir -p $kernelDir
 
+      - name: "📥 Checkout builder config"
+        uses: actions/checkout@v7
+
       - name: "⭐ Install prerequisites"
         run: |
           sudo apt-get update
