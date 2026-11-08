@@ -203,16 +203,14 @@ jobs:
 
       - name: "📦 Package AnyKernel3 zip"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
-        env:
-          args: ${{ steps.generate-args.outputs.args }}
         run: |
           release="4.14.186-27095505"
-          test -s "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image"
+          test -s "../${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image"
           if [ "$release" != "4.14.186-27095505" ]; then
             echo "Unexpected kernel release: $release" >&2
             exit 1
           fi
-          install -m 0644 "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image" anykernel3/Image
+          install -m 0644 "../${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image" anykernel3/Image
           sed -i 's/^do.devicecheck=0$/do.devicecheck=1/' anykernel3/anykernel.sh
           sed -i 's/^device.name1=$/device.name1=a32x/' anykernel3/anykernel.sh
           sed -i 's/^device.name2=$/device.name2=a32xeea/' anykernel3/anykernel.sh
