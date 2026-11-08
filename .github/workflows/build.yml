@@ -46,11 +46,11 @@ jobs:
 
       withKernelSU: ${{ matrix.repos.withKernelSU }}
     steps:
-      - name: "✨ Create working dir"
-        run: mkdir -p $kernelDir
-
       - name: "📥 Checkout builder config"
         uses: actions/checkout@v7
+
+      - name: "✨ Create working dir"
+        run: mkdir -p $kernelDir
 
       - name: "⭐ Install prerequisites"
         run: |
