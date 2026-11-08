@@ -114,10 +114,34 @@ jobs:
           if "#include <linux/version.h>" not in source:
               source = source.replace("#include <linux/errno.h>\n", "#include <linux/errno.h>\n#include <linux/version.h>\n", 1)
           path.write_text(source)
+
+          path = Path("KernelSU/kernel/manager/pkg_observer.c")
+          source = path.read_text()
+          marker = "    susfs_parse_priority_app_strings();"
+          guarded = "#ifdef CONFIG_KSU_SUSFS\n" + marker + "\n#endif"
+          if source.count(marker) != 2:
+              raise SystemExit("Unexpected SukiSU package observer SUSFS calls")
+          source = source.replace(marker, guarded)
+          path.write_text(source)
+
+          path = Path("KernelSU/kernel/supercall/dispatch.c")
+          source = path.read_text()
+          marker = "static int do_grant_root"
+          compat = '''#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 19, 0)
+          #define kvcalloc(n, size, flags) kcalloc(n, size, flags)
+          #define kvfree(ptr) kfree(ptr)
+          #endif
+
+          static int do_grant_root'''
+          if source.count(marker) != 1:
+              raise SystemExit("Unexpected SukiSU dispatch.c layout")
+          source = source.replace(marker, compat, 1)
+          path.write_text(source)
           PY
           grep -q 'return -EOPNOTSUPP;' KernelSU/kernel/extension/cpu_spoof.c
           grep -q '^config KSU_SUSFS$' KernelSU/kernel/Kconfig
           grep -q 'int ksu_handle_sys_reboot' KernelSU/kernel/supercall/supercall.c
+          grep -q 'CONFIG_KSU_SUSFS' KernelSU/kernel/manager/pkg_observer.c
           grep -q 'const char __user \*\*filename_user' KernelSU/kernel/feature/sucompat.h
           grep -q 'ksu_handle_execveat' fs/exec.c
           grep -q 'ksu_handle_faccessat' fs/open.c
