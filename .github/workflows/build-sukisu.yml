@@ -191,7 +191,7 @@ jobs:
         run: |
           echo "PATH Variable: $PATH"
           make ${{ env.args }} ${{ env.DEFCONFIG_NAME }}
-          grep -q '^CONFIG_KSU=y$' "${{ env.OUT_DIR }}/.config"
+          grep -q '^CONFIG_KSU=y$' "../${{ env.OUT_DIR }}/.config"
 
       - name: "🏴‍☠️ Before Action "
         env:
