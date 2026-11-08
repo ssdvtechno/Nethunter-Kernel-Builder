@@ -71,6 +71,8 @@ jobs:
           sed -i '\|drivers/kernelsu/Kconfig|d' drivers/Kconfig
           curl -fLSs --retry 3 "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/1cfa57340590971cba7521ed536da8ebbedc5f0a/kernel/setup.sh" | bash -s 1cfa57340590971cba7521ed536da8ebbedc5f0a
           test "$(git -C KernelSU rev-parse HEAD)" = "1cfa57340590971cba7521ed536da8ebbedc5f0a"
+          sed -i '/^#include <linux\/static_call.h>$/d' KernelSU/kernel/kernel_includes.h
+          ! grep -q '^#include <linux/static_call.h>$' KernelSU/kernel/kernel_includes.h
           grep -q '^config KSU_SUSFS$' KernelSU/kernel/Kconfig
           grep -q 'const char __user \*\*filename_user' KernelSU/kernel/feature/sucompat.h
           grep -q 'ksu_handle_execveat' fs/exec.c
