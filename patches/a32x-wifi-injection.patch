@@ -46,7 +46,7 @@ index b785742..01ad193 100644
  		(buffer + (length - sizeof(struct rx_status)));
 -	if (status->frame_status & ZD_RX_ERROR) {
 +	if ((status->frame_status & ZD_RX_ERROR) ||
-+\t    (status->frame_status & ~0x21)) {
++	    (status->frame_status & ~0x21)) {
  		if (mac->pass_failed_fcs &&
  				(status->frame_status & ZD_RX_CRC32_ERROR)) {
  			stats.flag |= RX_FLAG_FAILED_FCS_CRC;
